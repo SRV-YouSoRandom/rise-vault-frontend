@@ -23,7 +23,7 @@ export const wagmiConfig = getDefaultConfig({
 
 // Contract addresses
 export const CONTRACTS = {
-  RISE_VAULTS: '0x6155a1C59dba762646F8BE36Ee97FaC819fDD2b1' as const,
+  RISE_VAULTS: '0xE5eB2011BEBEaEc3F621BB756A64601a2c672334' as const,
   // Add other contract addresses as needed
 }
 
@@ -75,7 +75,7 @@ export const RISE_VAULTS_ABI = [
 
 // Common token addresses (update with actual addresses)
 export const TOKENS = {
-  WETH: '0x4200000000000000000000000000000000000006',
+  ETH:'0x0000000000000000000000000000000000000001',
   USDT: '0x40918ba7f132e0acba2ce4de4c4baf9bd2d7d849',
   WBTC: '0xf32d39ff9f6aa7a7a64d7a4f00a54826ef791a55',
 } as const

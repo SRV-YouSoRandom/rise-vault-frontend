@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
+import { useState, useEffect } from 'react'
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from 'wagmi'
+import { parseUnits, formatUnits } from 'viem'
 import { toast } from 'react-hot-toast'
 import { ArrowDownCircle } from 'lucide-react'
 
@@ -33,18 +33,34 @@ const ERC20_ABI = [
     "stateMutability": "view",
     "type": "function"
   },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
 ] as const
+
+// Token configuration with proper decimals
+const TOKEN_CONFIG: Record<string, { symbol: string; decimals: number }> = {
+  '0x40918ba7f132e0acba2ce4de4c4baf9bd2d7d849': { symbol: 'USDT', decimals: 8 },
+  '0xf32d39ff9f6aa7a7a64d7a4f00a54826ef791a55': { symbol: 'WBTC', decimals: 18 },
+}
 
 export function DepositCollateral({ selectedToken, onSuccess }: DepositCollateralProps) {
   const [amount, setAmount] = useState('')
   const [step, setStep] = useState<'approve' | 'deposit'>('approve')
+  
+  const { address: userAddress } = useAccount()
+  const tokenConfig = TOKEN_CONFIG[selectedToken] || { symbol: 'Token', decimals: 18 }
 
   // Read token balance
   const { data: balance } = useReadContract({
     address: selectedToken as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: [selectedToken as `0x${string}`], // This should be user's address
+    args: [userAddress!], // Use user's address, not token address
   })
 
   // Approve transaction
@@ -54,12 +70,12 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
     isPending: isApproving 
   } = useWriteContract()
   
-  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isApproveConfirming,
+    isSuccess: isApproveSuccess,
+    error: approveError
+  } = useWaitForTransactionReceipt({
     hash: approveHash,
-    onSuccess: () => {
-      setStep('deposit')
-      toast.success('Approval confirmed!')
-    }
   })
 
   // Deposit transaction
@@ -69,15 +85,45 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
     isPending: isDepositing 
   } = useWriteContract()
   
-  const { isLoading: isDepositConfirming } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isDepositConfirming,
+    isSuccess: isDepositSuccess,
+    error: depositError
+  } = useWaitForTransactionReceipt({
     hash: depositHash,
-    onSuccess: () => {
+  })
+
+  // Handle approve success
+  useEffect(() => {
+    if (isApproveSuccess && approveHash) {
+      setStep('deposit')
+      toast.success('Token approval confirmed!', { id: approveHash })
+    }
+  }, [isApproveSuccess, approveHash])
+
+  // Handle approve error
+  useEffect(() => {
+    if (approveError && approveHash) {
+      toast.error('Token approval failed!', { id: approveHash })
+    }
+  }, [approveError, approveHash])
+
+  // Handle deposit success
+  useEffect(() => {
+    if (isDepositSuccess && depositHash) {
       setAmount('')
       setStep('approve')
       onSuccess()
-      toast.success('Collateral deposited successfully!')
+      toast.success('Collateral deposited successfully!', { id: depositHash })
     }
-  })
+  }, [isDepositSuccess, depositHash, onSuccess])
+
+  // Handle deposit error
+  useEffect(() => {
+    if (depositError && depositHash) {
+      toast.error('Collateral deposit failed!', { id: depositHash })
+    }
+  }, [depositError, depositHash])
 
   const handleApprove = async () => {
     if (!amount) {
@@ -86,14 +132,14 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
     }
 
     try {
-      const amountWei = parseEther(amount)
+      const amountWei = parseUnits(amount, tokenConfig.decimals)
       writeApprove({
         address: selectedToken as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [CONTRACTS.RISE_VAULTS, amountWei],
       })
-      toast.success('Approving token...')
+      toast.loading('Approving token...', { id: 'approve-loading' })
     } catch (error) {
       toast.error('Failed to approve token')
       console.error('Error approving token:', error)
@@ -107,25 +153,26 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
     }
 
     try {
-      const amountWei = parseEther(amount)
+      const amountWei = parseUnits(amount, tokenConfig.decimals)
       writeDeposit({
         address: CONTRACTS.RISE_VAULTS,
         abi: RISE_VAULTS_ABI,
         functionName: 'depositCollateral',
         args: [selectedToken as `0x${string}`, amountWei],
       })
-      toast.success('Depositing collateral...')
+      toast.loading('Depositing collateral...', { id: 'deposit-loading' })
     } catch (error) {
       toast.error('Failed to deposit collateral')
       console.error('Error depositing collateral:', error)
     }
   }
 
-  const tokenSymbol = Object.entries({
-    '0x4200000000000000000000000000000000000006': 'WETH',
-    '0x40918ba7f132e0acba2ce4de4c4baf9bd2d7d849': 'USDT',
-    '0xf32d39ff9f6aa7a7a64d7a4f00a54826ef791a55': 'WBTC',
-  }).find(([address]) => address === selectedToken)?.[1] || 'Token'
+  const setMaxAmount = () => {
+    if (balance) {
+      const maxAmount = formatUnits(balance, tokenConfig.decimals)
+      setAmount(maxAmount)
+    }
+  }
 
   return (
     <Card className="p-6">
@@ -139,19 +186,29 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
       <div className="space-y-4">
         <div>
           <label htmlFor="deposit-amount" className="block text-sm font-medium text-gray-700 mb-2">
-            Amount ({tokenSymbol})
+            Amount ({tokenConfig.symbol})
           </label>
-          <Input
-            id="deposit-amount"
-            type="number"
-            placeholder="0.0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full"
-          />
+          <div className="relative">
+            <Input
+              id="deposit-amount"
+              type="number"
+              placeholder="0.0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full pr-16"
+            />
+            {balance && (
+              <button
+                onClick={setMaxAmount}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                MAX
+              </button>
+            )}
+          </div>
           {balance && (
             <p className="text-sm text-gray-500 mt-1">
-              Balance: {formatEther(balance)} {tokenSymbol}
+              Balance: {formatUnits(balance, tokenConfig.decimals)} {tokenConfig.symbol}
             </p>
           )}
         </div>
@@ -160,18 +217,20 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
           {step === 'approve' ? (
             <Button
               onClick={handleApprove}
-              disabled={!amount || isApproving || isApproveConfirming}
+              disabled={!amount || isApproving || isApproveConfirming || !userAddress}
               className="flex-1"
+              variant="primary"
             >
               {isApproving || isApproveConfirming 
                 ? 'Approving...' 
-                : `Approve ${tokenSymbol}`}
+                : `Approve ${tokenConfig.symbol}`}
             </Button>
           ) : (
             <Button
               onClick={handleDeposit}
-              disabled={!amount || isDepositing || isDepositConfirming}
+              disabled={!amount || isDepositing || isDepositConfirming || !userAddress}
               className="flex-1"
+              variant="primary"
             >
               {isDepositing || isDepositConfirming 
                 ? 'Depositing...' 
@@ -183,6 +242,12 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
         {step === 'deposit' && (
           <p className="text-sm text-green-600 text-center">
             ✓ Token approved. You can now deposit collateral.
+          </p>
+        )}
+
+        {!userAddress && (
+          <p className="text-sm text-red-600 text-center">
+            Please connect your wallet to continue
           </p>
         )}
       </div>

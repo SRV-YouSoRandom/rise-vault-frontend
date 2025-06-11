@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther } from 'viem'
 import { toast } from 'react-hot-toast'
@@ -24,13 +24,12 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
     isPending: isBorrowing 
   } = useWriteContract()
   
-  const { isLoading: isBorrowConfirming } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isBorrowConfirming,
+    isSuccess: isBorrowSuccess,
+    error: borrowError
+  } = useWaitForTransactionReceipt({
     hash: borrowHash,
-    onSuccess: () => {
-      setAmount('')
-      onSuccess()
-      toast.success('rUSD borrowed successfully!')
-    }
   })
 
   // Repay transaction
@@ -40,14 +39,45 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
     isPending: isRepaying 
   } = useWriteContract()
   
-  const { isLoading: isRepayConfirming } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isRepayConfirming,
+    isSuccess: isRepaySuccess,
+    error: repayError
+  } = useWaitForTransactionReceipt({
     hash: repayHash,
-    onSuccess: () => {
+  })
+
+  // Handle borrow success
+  useEffect(() => {
+    if (isBorrowSuccess && borrowHash) {
       setAmount('')
       onSuccess()
-      toast.success('rUSD repaid successfully!')
+      toast.success('rUSD borrowed successfully!', { id: borrowHash })
     }
-  })
+  }, [isBorrowSuccess, borrowHash, onSuccess])
+
+  // Handle borrow error
+  useEffect(() => {
+    if (borrowError && borrowHash) {
+      toast.error('Failed to borrow rUSD!', { id: borrowHash })
+    }
+  }, [borrowError, borrowHash])
+
+  // Handle repay success
+  useEffect(() => {
+    if (isRepaySuccess && repayHash) {
+      setAmount('')
+      onSuccess()
+      toast.success('rUSD repaid successfully!', { id: repayHash })
+    }
+  }, [isRepaySuccess, repayHash, onSuccess])
+
+  // Handle repay error
+  useEffect(() => {
+    if (repayError && repayHash) {
+      toast.error('Failed to repay rUSD!', { id: repayHash })
+    }
+  }, [repayError, repayHash])
 
   const handleBorrow = async () => {
     if (!amount) {
@@ -56,6 +86,7 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
     }
 
     try {
+      // rUSD typically has 18 decimals like most stablecoins
       const amountWei = parseEther(amount)
       writeBorrow({
         address: CONTRACTS.RISE_VAULTS,
@@ -63,7 +94,7 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
         functionName: 'mintUSD',
         args: [amountWei],
       })
-      toast.success('Borrowing rUSD...')
+      toast.loading('Borrowing rUSD...', { id: 'borrow-loading' })
     } catch (error) {
       toast.error('Failed to borrow rUSD')
       console.error('Error borrowing rUSD:', error)
@@ -77,6 +108,7 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
     }
 
     try {
+      // rUSD typically has 18 decimals like most stablecoins
       const amountWei = parseEther(amount)
       writeRepay({
         address: CONTRACTS.RISE_VAULTS,
@@ -84,7 +116,7 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
         functionName: 'repayUSD',
         args: [amountWei],
       })
-      toast.success('Repaying rUSD...')
+      toast.loading('Repaying rUSD...', { id: 'repay-loading' })
     } catch (error) {
       toast.error('Failed to repay rUSD')
       console.error('Error repaying rUSD:', error)
@@ -92,6 +124,24 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
   }
 
   const maxBorrowAmount = parseFloat(currentDebt) || 0
+  
+  const setMaxRepayAmount = () => {
+    if (maxBorrowAmount > 0) {
+      setAmount(currentDebt)
+    }
+  }
+
+  const formatCurrentDebt = (debt: string) => {
+    try {
+      const debtNumber = parseFloat(debt)
+      return debtNumber.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6
+      })
+    } catch {
+      return debt
+    }
+  }
 
   return (
     <Card className="p-6">
@@ -107,16 +157,28 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
           <label htmlFor="borrow-amount" className="block text-sm font-medium text-gray-700 mb-2">
             Amount (rUSD)
           </label>
-          <Input
-            id="borrow-amount"
-            type="number"
-            placeholder="0.0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full"
-          />
+          <div className="relative">
+            <Input
+              id="borrow-amount"
+              type="number"
+              placeholder="0.0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full pr-16"
+              step="0.000001"
+              min="0"
+            />
+            {maxBorrowAmount > 0 && (
+              <button
+                onClick={setMaxRepayAmount}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                MAX
+              </button>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            Current debt: {currentDebt} rUSD
+            Current debt: {formatCurrentDebt(currentDebt)} rUSD
           </p>
         </div>
 
@@ -147,6 +209,12 @@ export function BorrowrUSD({ currentDebt, onSuccess }: BorrowrUSDProps) {
             No debt to repay
           </p>
         )}
+
+        <div className="text-xs text-gray-400 space-y-1">
+          <p>• Borrowing will mint new rUSD against your collateral</p>
+          <p>• Repaying will burn rUSD and reduce your debt</p>
+          <p>• Make sure you have sufficient collateral ratio</p>
+        </div>
       </div>
     </Card>
   )

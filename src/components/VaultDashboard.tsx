@@ -12,7 +12,7 @@ import { Card } from './ui/Card'
 export function VaultDashboard() {
   const { address } = useAccount()
   const [hasVault, setHasVault] = useState(false)
-  const [selectedToken, setSelectedToken] = useState<string>(TOKENS.WETH)
+  const [selectedToken, setSelectedToken] = useState<string>(TOKENS.ETH)
 
   // Read vault data
   const { data: vaultData, refetch: refetchVault } = useReadContract({
