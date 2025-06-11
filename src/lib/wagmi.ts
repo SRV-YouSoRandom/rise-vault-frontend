@@ -1,12 +1,25 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit'
-import { mainnet, polygon, arbitrum, base, optimism } from 'wagmi/chains'
+import {
+  getDefaultConfig,
+} from '@rainbow-me/rainbowkit';
+
+const avalanche = {
+  id: 	11155931,
+  name: 'Rise Testnet',
+  iconBackground: '#fff',
+  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://testnet.riselabs.xyz'] },
+  },
+  blockExplorers: {
+    default: { name: 'Explorer', url: 'https://explorer.testnet.riselabs.xyz' },
+  }
+}
 
 export const wagmiConfig = getDefaultConfig({
   appName: 'Rise Vault',
-  projectId: 'YOUR_WALLETCONNECT_PROJECT_ID', // Get from https://cloud.walletconnect.com
-  chains: [mainnet, polygon, arbitrum, base, optimism],
-  ssr: false,
-})
+  projectId: 'YOUR_PROJECT_ID',
+  chains: [avalanche],
+});
 
 // Contract addresses
 export const CONTRACTS = {

@@ -122,9 +122,9 @@ export function DepositCollateral({ selectedToken, onSuccess }: DepositCollatera
   }
 
   const tokenSymbol = Object.entries({
-    '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': 'WETH',
-    '0xA0b86a33E6417aFE8D36C7cA1A81C1a8Cf43FeDf': 'USDC',
-    '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': 'WBTC',
+    '0x4200000000000000000000000000000000000006': 'WETH',
+    '0x40918ba7f132e0acba2ce4de4c4baf9bd2d7d849': 'USDT',
+    '0xf32d39ff9f6aa7a7a64d7a4f00a54826ef791a55': 'WBTC',
   }).find(([address]) => address === selectedToken)?.[1] || 'Token'
 
   return (
